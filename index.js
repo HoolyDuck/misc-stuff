@@ -1,8 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-const { createHandler } = require("graphql-http/lib/use/express")
-const schema = require("./schema/schema");
+const handler = require("./schema/schema");
 
 const app = express();
 const port = 3000;
@@ -28,4 +27,4 @@ app.listen(port, () => {
 });
 
 
-app.use('/graphql', createHandler({ schema }));
+app.all('/graphql', handler);
