@@ -7,172 +7,119 @@ const {
     GraphQLNonNull,
     GraphQLEnumType,
     GraphQLInt,
+    buildSchema,
 } = require('graphql');
 
 const Employee = require('../employees/model');
 const Order = require('../orders/model');
+const { createHandler } = require("graphql-http/lib/use/express")
 
 
-const EmployeeType = new GraphQLObjectType({
-    name: "Employee",
-    fields: () => ({
-        id: { type: GraphQLID },
-        name: { type: GraphQLString },
-        surname: { type: GraphQLString },
-        age: { type: GraphQLInt },
-        position: { type: GraphQLString },
-        orders: {
-            type: new GraphQLList(OrderType),
-            async resolve(parent, args) {
-                return Order.find({ employee: { _id: parent.id } });
-            },
-        },
-    }),
-});
+const schema = buildSchema(`
+    type Employee {
+        id: ID
+        name: String
+        surname: String
+        age: Int
+        position: String
+        orders: [Order]
+    }
 
-const OrderType = new GraphQLObjectType({
-    name: "Order",
-    fields: () => ({
-        id: { type: GraphQLID },
-        name: { type: GraphQLString },
-        orderDate: { type: GraphQLString },
-        company: { type: GraphQLString },
-        price: { type: GraphQLInt },
-        employee: {
-            type: EmployeeType,
-            async resolve(parent, args) {
-                return Employee.findById(parent.employee._id);
-            }
-        },
-    }),
-});
+    type Order {
+        id: ID
+        name: String
+        orderDate: String
+        company: String
+        price: Int
+        employee: Employee
+    }
 
-const RootQuery = new GraphQLObjectType({
-    name: "RootQueryType",
-    fields: {
-        employee: {
-            type: EmployeeType,
-            args: { id: { type: GraphQLID } },
-            async resolve(parent, args) {
-                return Employee.findById(args.id);
-            },
-        },
-        employees: {
-            type: new GraphQLList(EmployeeType),
-            async resolve(parent, args) {
-                return Employee.find();
-            },
-        },
-        order: {
-            type: OrderType,
-            args: { id: { type: GraphQLID } },
-            async resolve(parent, args) {
-                return Order.findById(args.id);
-            },
-        },
-        orders: {
-            type: new GraphQLList(OrderType),
-            async resolve(parent, args) {
-                const orders = await Order.find();
-                return orders;
-            },
-        },
+    type Query {
+        employee(id: ID): Employee
+        employees: [Employee]
+        order(id: ID): Order
+        orders: [Order]
+    }
+
+    type Mutation {
+        addEmployee(name: String!, surname: String!, age: Int!, position: String!): Employee
+        addOrder(name: String!, orderDate: String!, company: String!, price: Int!, employeeId: ID!): Order
+        updateEmployee(id: ID!, name: String, surname: String, age: Int, position: String): Employee
+        updateOrder(id: ID!, name: String, orderDate: String, company: String, price: Int, employeeId: ID): Order
+        deleteEmployee(id: ID!): String
+        deleteOrder(id: ID!): String
+    }
+`);
+
+const resolvers = {
+    employee: async ({ id }) => {
+        return await Employee.findById(id).populate("orders");
     },
-});
-
-const Mutation = new GraphQLObjectType({
-    name: "Mutation",
-    fields: {
-        addEmployee: {
-            type: EmployeeType,
-            args: {
-                name: { type: new GraphQLNonNull(GraphQLString) },
-                surname: { type: new GraphQLNonNull(GraphQLString) },
-                age: { type: new GraphQLNonNull(GraphQLInt) },
-                position: { type: new GraphQLNonNull(GraphQLString) },
-            },
-            async resolve(parent, args) {
-                let employee = new Employee({
-                    name: args.name,
-                    surname: args.surname,
-                    age: args.age,
-                    position: args.position,
-                });
-                return employee.save();
-            },
-        },
-        addOrder: {
-            type: OrderType,
-            args: {
-                name: { type: new GraphQLNonNull(GraphQLString) },
-                orderDate: { type: new GraphQLNonNull(GraphQLString) },
-                company: { type: new GraphQLNonNull(GraphQLString) },
-                price: { type: new GraphQLNonNull(GraphQLInt) },
-                employeeId: { type: new GraphQLNonNull(GraphQLID) },
-            },
-            async resolve(parent, args) {
-                let order = new Order({
-                    name: args.name,
-                    orderDate: args.orderDate,
-                    company: args.company,
-                    price: args.price,
-                    employee: { _id: args.employeeId }
-                });
-                const employee = await Employee.findById(args.employeeId);
-                console.log(employee);
-                employee.orders.push(order._id);
-                await employee.save();
-                return order.save();
-            },
-        },
-        updateEmployee: {
-            type: EmployeeType,
-            args: {
-                id: { type: new GraphQLNonNull(GraphQLID) },
-                name: { type: GraphQLString },
-                surname: { type: GraphQLString },
-                age: { type: GraphQLInt },
-                position: { type: GraphQLString },
-            },
-            async resolve(parent, args) {
-                return Employee.findByIdAndUpdate(args.id, args, { new: true });
-            },
-        },
-        updateOrder: {
-            type: OrderType,
-            args: {
-                id: { type: new GraphQLNonNull(GraphQLID) },
-                name: { type: GraphQLString },
-                orderDate: { type: GraphQLString },
-                company: { type: GraphQLString },
-                price: { type: GraphQLInt },
-                employeeId: { type: GraphQLID },
-            },
-            async resolve(parent, args) {
-                return Order.findByIdAndUpdate(args.id, args, { new: true });
-            },
-        },
-        deleteEmployee: {
-            type: GraphQLString,
-            args: { id: { type: new GraphQLNonNull(GraphQLID) } },
-            async resolve(parent, args) {
-                await Employee.findByIdAndDelete(args.id);
-                return "Employee deleted";
-            },
-        },
-        deleteOrder: {
-            type: GraphQLString,
-            args: { id: { type: new GraphQLNonNull(GraphQLID) } },
-            async resolve(parent, args) {
-                await Order.findByIdAndDelete(args.id);
-                return "Order deleted";
-            }
-        },
+    employees: async () => {
+        return await Employee.find().populate("orders");
     },
-});
+    order: async ({ id }) => {
+        return await Order.findById(id).populate("employee")
+    },
+    orders: async () => {
+        return await Order.find().populate("employee");
+    },
+    addEmployee: async ({ name, surname, age, position }) => {
+        let employee = new Employee({
+            name,
+            surname,
+            age,
+            position,
+        });
+        return await employee.save();
+    },
+    addOrder: async ({ name, orderDate, company, price, employeeId }) => {
+        let order = new Order({
+            name,
+            orderDate,
+            company,
+            price,
+            employee: { _id: employeeId }
+        });
+        const employee = await Employee.findById(employeeId);
+        employee.orders.push(order._id);
+        await employee.save();
+        return await order.save();
+    },
+    updateEmployee: async ({ id, name, surname, age, position }) => {
+        const update = {}
+        const check = { name, surname, age, position }
+        for (const key in check) {
+            if (check[key]) {
+                update[key] = check[key]
+            }
+        }
+        return await Employee.findByIdAndUpdate(id, update, { new: true });
+    },
+    updateOrder: async ({ id, name, orderDate, company, price, employeeId }) => {
+        const update = {}
+        const check = { name, orderDate, company, price, employeeId }
+        for (const key in check) {
+            if (check[key]) {
+                update[key] = check[key]
+            }
+        }
+        const order = await Order.findByIdAndUpdate(id, update, { new: true });
+        if (employeeId) {
+            const employee = await Employee.findById(employeeId);
+            employee.orders.push(order._id);
+            await employee.save();
+        }
+        return order;
+    },
+    deleteEmployee: async ({ id }) => {
+        await Employee.findByIdAndDelete(id);
+        return "Employee deleted";
+    },
+    deleteOrder: async ({ id }) => {
+        await Order.findByIdAndDelete(id);
+        return "Order deleted";
+    },
+};
 
-
-module.exports = new GraphQLSchema({
-    query: RootQuery,
-    mutation: Mutation,
-});
+module.exports = createHandler({ schema: schema, rootValue: resolvers });
