@@ -5,7 +5,7 @@ const handler = require("./schema/schema");
 
 const app = express();
 const port = 3000;
-const db_url = "mongodb+srv://nazar260804:Lia70iePXPUNqyIq@lab05.ho3jf6k.mongodb.net/?retryWrites=true&w=majority&appName=lab05"
+const db_url = "brih"
 
 mongoose
     .connect(db_url)
